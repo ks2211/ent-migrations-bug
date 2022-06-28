@@ -95,6 +95,7 @@ func MigrationsWithSchema(client *ent.Client) error {
 						SetCharset("utf8"),
 					Extra: []atlas.Clause{&atlas.IfNotExists{}},
 				})
+				return changes, nil
 				// return []atlas.Change{
 				// 	&atlas.AddSchema{
 				// 		S: atlas.New("mytestschema").
