@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 
 	atlas "ariga.io/atlas/sql/schema"
@@ -58,7 +59,7 @@ func main() {
 		log.Fatalf("failed migration no schema %v", err)
 	}
 
-	if err := MigrationsWithSchema(tx.Client().Debug()); err != nil {
+	if err := MigrationsWithSchema(tx.Client().Debug(), "mytestschema"); err != nil {
 		if err := tx.Rollback(); err != nil {
 			log.Fatalf("failed rollback migration in schema %v", err)
 		}
@@ -66,6 +67,23 @@ func main() {
 	}
 
 	tx.Commit()
+
+	http.HandleFunc("/migrate", func(w http.ResponseWriter, req *http.Request) {
+		schemaName := req.URL.Query().Get("schema")
+		if schemaName == "" {
+			http.Error(w, "schema empty", http.StatusBadRequest)
+			return
+		}
+		handleTx, _ := client.Tx(context.Background())
+		if err := MigrationsWithSchema(handleTx.Client().Debug(), schemaName); err != nil {
+			http.Error(w, fmt.Sprintf("error migrate %s. error %v", schemaName, err), http.StatusBadRequest)
+			return
+		}
+
+		w.Write([]byte("done"))
+	})
+
+	http.ListenAndServe(":8090", nil)
 }
 
 func MigrationsNoSchema(client *ent.Client) error {
@@ -76,7 +94,7 @@ func MigrationsNoSchema(client *ent.Client) error {
 	)
 }
 
-func MigrationsWithSchema(client *ent.Client) error {
+func MigrationsWithSchema(client *ent.Client, schemaName string) error {
 	return client.Schema.Create(context.Background(),
 		migrate.WithDropIndex(true),
 		migrate.WithDropColumn(true),
@@ -88,23 +106,23 @@ func MigrationsWithSchema(client *ent.Client) error {
 				if err != nil {
 					return nil, err
 				}
-				changes = append(changes, &atlas.AddSchema{
-					S: atlas.New("mytestschema").
-						AddAttrs(desired.Attrs...).
-						AddTables(desired.Tables...).
-						SetCharset("utf8"),
-					Extra: []atlas.Clause{&atlas.IfNotExists{}},
-				})
+				// changes = append(changes, &atlas.AddSchema{
+				// 	S: atlas.New(schemaName).
+				// 		AddAttrs(desired.Attrs...).
+				// 		AddTables(desired.Tables...).
+				// 		SetCharset("utf8"),
+				// 	Extra: []atlas.Clause{&atlas.IfNotExists{}},
+				// })
+				changes = append([]atlas.Change{
+					&atlas.AddSchema{
+						S: atlas.New(schemaName).
+							AddAttrs(desired.Attrs...).
+							AddTables(desired.Tables...).
+							SetCharset("utf8"),
+						Extra: []atlas.Clause{&atlas.IfNotExists{}},
+					},
+				}, changes...)
 				return changes, nil
-				// return []atlas.Change{
-				// 	&atlas.AddSchema{
-				// 		S: atlas.New("mytestschema").
-				// 			AddAttrs(desired.Attrs...).
-				// 			AddTables(desired.Tables...).
-				// 			SetCharset("utf8"),
-				// 		Extra: []atlas.Clause{&atlas.IfNotExists{}},
-				// 	},
-				// }, nil
 			})
 		}),
 	)

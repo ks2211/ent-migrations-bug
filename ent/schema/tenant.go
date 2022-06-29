@@ -30,5 +30,12 @@ func (Tenant) Edges() []ent.Edge {
 					OnDelete: entsql.Cascade,
 				},
 			),
+		edge.To("groups", Groups.Type).
+			StorageKey(edge.Column("tenant_id")).
+			Annotations(
+				entsql.Annotation{
+					OnDelete: entsql.Cascade,
+				},
+			),
 	}
 }
